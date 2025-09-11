@@ -1,7 +1,7 @@
 #include <RFM69.h>         //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
-#include "RGB_LED.h"
-#include "Launcher.h"
+#include "../RGB_LED.h"
+#include "../Launcher.h"
 
 
 //*********************************************************************************************
@@ -59,6 +59,13 @@
 int currentState = STATE_BOOT;
 bool continuity = false;
 bool armed = false;
+int linkTry = 0;
+int heartBeat = 0;
+int hbFailed = 0;
+
+#define HB_CHECK_TIME 5000 // Check for hearbeat with linked controller every 5 seconds
+#define MAX_HB_FAIL 3 // after 5 failed heartbeats go back to booting state
+#define LINKWAIT  500
 
 #ifdef ENABLE_ATC
   RFM69_ATC radio(RF69_SPI_CS, RF69_IRQ_PIN, true, null);
@@ -66,6 +73,7 @@ bool armed = false;
   RFM69 radio(RF69_SPI_CS, RF69_IRQ_PIN, true, null);
 #endif
 
+bool spy = false;
 rgbLED myLED(LED_RED, LED_GREEN, LED_BLUE);
 
 void setup() {
@@ -89,6 +97,7 @@ void setup() {
   Serial.println("Finished waking up.");
 
   bool worked = radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  delay(500);
   if (worked) {
     Serial.println("Radio initialized!");
     myLED.setBlinkSpeed(BLINK_MED);
@@ -102,14 +111,12 @@ void setup() {
 #ifdef IS_RFM69HW_HCW
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 #endif
-
-#ifdef ENCRYPTKEY
   radio.encrypt(ENCRYPTKEY);
-#endif
+  radio.spyMode(spy);
 
-#ifdef FREQUENCY_EXACT
-  radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
-#endif
+// #ifdef FREQUENCY_EXACT
+//   radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
+// #endif
   
 //Auto Transmission Control - dials down transmit power to save battery (-100 is the noise floor, -90 is still pretty good)
 //For indoor nodes that are pretty static and at pretty stable temperatures (like a MotionMote) -90dBm is quite safe
@@ -137,23 +144,33 @@ void getLink() {
 
 // We got a link message from a Gateway, so move to STATE_READY if we have continuity
 void gotLink(int gatewayID) {
-  Serial.printf("Linked with gateway %d\n");
+  Serial.printf("Linked with gateway %d\n", gatewayID);
 
-  // Either go to READY or NOCONT depending on continuity
-  if (continuity) {
-    myLED.setColor(STATE_READY);
-    currentState = STATE_READY;
+  // Did we relink as a failed heartbeat?
+  if (hbFailed == 0) {   // No, not a failed heartbeat   
+    // Either go to READY or NOCONT depending on continuity
+    if (continuity) {
+      Serial.println("Setting ready");
+      currentState = STATE_READY;    
+    } else {
+      currentState = STATE_NOCONT;
+    }
+    myLED.setColor(ledState[currentState][0]);
+    myLED.setBlinkSpeed(ledState[currentState][1]);
+    myLED.update();
   } else {
-    myLED.setColor(STATE_NOCONT);
-    currentState = STATE_NOCONT;
+    // Reset hbFailed
+    hbFailed = 0;
   }
+  // Remember when we're linked
+  heartBeat = millis();
 }
 
 // Check continuity
 bool getContinuity() {
   // TODO - check for it
-  bool result = (currentState == STATE_LAUNCH ? false : true);
-  return result;
+  //bool result = (currentState == STATE_LAUNCH ? false : true);
+  return true;
 }
 
 // Send our current state
@@ -175,7 +192,7 @@ void sendArmed() {
 }
 
 bool setArmed(bool newState) {
-  if (!continuity) {
+  if (!continuity && newState) {
     Serial.println("Cannot arm without continuity");
     return false;
   } 
@@ -184,14 +201,18 @@ bool setArmed(bool newState) {
   armed = newState;
   if (continuity && armed) {
     currentState = STATE_ARMED;
-    myLED.setColor(STATE_ARMED);
-    myLED.setBlinkSpeed(BLINK_FAST);
+  } else if (!armed) {
+    currentState = STATE_READY;
   }
-  sendArmed();
+  myLED.setColor(ledState[currentState][0]);
+  myLED.setBlinkSpeed(ledState[currentState][1]);
+  myLED.update();
+  return true;
 }
 
 bool doLaunch() {
-  // TODO - open relay and laucnh, then delay some amount of time
+  // TODO - open relay and launxh, then delay some amount of time
+  currentState = STATE_LAUNCH;
   return(true);
 }
 
@@ -201,6 +222,8 @@ bool setLaunch() {
     Serial.println("Cannot launch unless armed and with continuity.");
     return(false);
   }
+  
+  currentState = STATE_LAUNCH;
   
   // Launch!
   bool success = doLaunch();
@@ -240,10 +263,12 @@ bool setLaunch() {
 void loop() {
 
   String message = "";
+  int myNode = -1;
 
   // Check for any received packets
   if (radio.receiveDone()) {
 
+    myNode = radio.SENDERID;
     // We got one - grab the data
     for (byte i = 0; i < radio.DATALEN; i++) {
       Serial.print((char)radio.DATA[i]);
@@ -253,10 +278,8 @@ void loop() {
     // Send an ACK if requested
     if (radio.ACKRequested()) {
       radio.sendACK();
-      Serial.print(" - ACK sent");
+      Serial.println(" - ACK sent");
     }
-  } else {
-    message = "NOMSG";
   }
 
   /*
@@ -274,18 +297,38 @@ void loop() {
 
   // See what the message is
   if (message == "LINK") {
-    gotLink(radio.SENDERID);
+    Serial.println("Gotlink");
+    gotLink(myNode);
   } else if (message == "STATE") {
     // Send our current State
     sendState();
-  } else if (message == "ARM") {
-    setArmed(true);
-  } else if (message == "DISARM") {
-    setArmed(false);
+  } else if (message == "ARM" || message == "DISARM") {
+    // Toggle arming
+    armed = !armed;
+    bool result = setArmed(armed);
+  // in the future we may want explicit DISARM command
+  // } else if (message == "DISARM") {
+  //   bool result = setArmed(false);
   } else if (message == "LAUNCH") {
-    currentState = STATE_LAUNCH;
-  } else if (message == "NOMSG") {
-    // We're not yet listening, nothing to do.
+    setLaunch();
+  } else if (message == "") {
+    // We're not yet listening, just make sure we still have heartbeat if we haven't received anything
+    if ((millis()-heartBeat) > HB_CHECK_TIME) {
+      // First reset the heartbeat timer
+      heartBeat = millis();
+      if (currentState != STATE_BOOT) hbFailed++;
+      if (hbFailed < MAX_HB_FAIL ) {
+        // Try getting link
+        getLink();
+      } else {
+        // We've failed enough that we need to go back to boot
+        Serial.println("Too many failed heartbeats, resetting to STATE_BOOT");
+        hbFailed = 0;
+        linkTry = 0;
+        setArmed(false);
+        currentState = STATE_BOOT;
+      }
+    }
   } else {
     Serial.print("Received unsupported command: ");
     Serial.println(message);    
@@ -296,7 +339,11 @@ void loop() {
   switch (currentState) {
     case STATE_BOOT:
       // Everything starts here.  Try to link with the controller.
-      getLink();
+      if ((millis() - linkTry) > LINKWAIT) {
+        linkTry = millis();
+        Serial.println("Initial boot link try");
+        getLink();
+      }
       break;
     case STATE_READY:
     case STATE_ARMED:
@@ -307,8 +354,9 @@ void loop() {
       setLaunch();
       break;
     case STATE_DONE:
-      myLED.setColor(STATE_DONE);
-      myLED.stopBlink();
+      myLED.setColor(ledState[currentState][0]);
+      myLED.setBlinkSpeed(BLINK_NONE);
+      myLED.update();
       break;
     default:
       // We should never be here.  Something is horribly wrong.
@@ -321,6 +369,8 @@ void loop() {
   Do basic housekeeping:
   * Blink LED
   */
+  myLED.setColor(ledState[currentState][0]);
+  myLED.setBlinkSpeed(ledState[currentState][1]);
   myLED.update();
   
 }

@@ -1,7 +1,7 @@
 #include <RFM69.h>         //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
-#include "RGB_LED.h"
-#include "Launcher.h"
+#include "../RGB_LED.h"
+#include "../Launcher.h"
 
 //*********************************************************************************************
 //************ IMPORTANT SETTINGS - YOU MUST CHANGE/CONFIGURE TO FIT YOUR HARDWARE *************
@@ -34,8 +34,8 @@
 #define LED_BLUE      25
 
 // Button pins
-#define SELECT_PIN    27
-#define STATUS_PIN    26
+#define SELECT_PIN    32
+#define STATUS_PIN    14
 #define ARM_PIN       12
 #define LAUNCH_PIN    13
 
@@ -78,7 +78,7 @@ void setup() {
 
   pinMode(RST_PIN, OUTPUT);
   pinMode(IRQ_PIN,INPUT);
-  attachInterrupt(IRQ_PIN, rfm69Interrupt, RISING);
+  //attachInterrupt(IRQ_PIN, rfm69Interrupt, RISING);
 
   // We wake up the RFM69 by setting to high and then low.  
   digitalWrite(RST_PIN,HIGH);
@@ -97,7 +97,7 @@ void setup() {
     myLED.setBlinkSpeed(ledState[STATE_DONE][1]);
   }
 
-  radio.setIrq(IRQ_PIN);
+  //radio.setIrq(IRQ_PIN);
 
 #ifdef IS_RFM69HW_HCW
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
@@ -121,15 +121,18 @@ bool gotLink(int nodeID) {
   nodeState[nodeID] = STATE_BOOT;
   radio.sendWithRetry(nodeID, "LINK", 4);
   Serial.printf("Linked with node %d\n", nodeID);
+  return true;
 }
 
 // Check for state
 void getState(int nodeID) {
+  Serial.println("Sending state");
   radio.sendWithRetry(nodeID, "STATE", 5);
 }
 
 void gotState(int nodeID, String state) {
   // First parse out the last character into the status
+  Serial.println("Getting Digit");
   int digit = state[5] - '0';
   nodeState[nodeID] = digit;
 }
@@ -155,18 +158,25 @@ void sendLaunch(int nodeID) {
 void loop() {
 
   String message = "";
+  int myNode = -1;
 
   // Do we have a message to process?
   if (radio.receiveDone()) {
+    Serial.println("Got Data");
+    myNode = radio.SENDERID;
     for (byte i = 0; i < radio.DATALEN; i++) {
       Serial.print((char)radio.DATA[i]);
       message = message + (char)radio.DATA[i];
     }
+    Serial.println();
+    Serial.println("Done.");
+    Serial.print("Message is: ");
+    Serial.println(message);
 
     if (radio.ACKRequested()) {
       byte theNodeID = radio.SENDERID;
       radio.sendACK();
-      Serial.print(" - ACK sent.");
+      Serial.println(" - ACK sent.");
 
       // When a node requests an ACK, respond to the ACK
       // and also send a packet requesting an ACK (every 3rd one only)
@@ -188,25 +198,31 @@ void loop() {
   */
 
   // Make sure we're willing to talk with this node ID
-  if ((radio.SENDERID < MIN_NODE) || (radio.SENDERID > MAX_NODE )) {
-    Serial.printf("Ignoring message from out of bounds node %d\n", radio.SENDERID);
-    message = "NOMSG";
+  if (myNode > 0) {
+    if ((myNode < MIN_NODE) || (myNode > MAX_NODE )) {
+      Serial.printf("Ignoring message from out of bounds node %d\n", myNode);
+      message = "NOMSG";
+    }
   }
+
   // See what the message is
-  if (message == "LINK") {
+  if (message.startsWith("LINK")) {
+    Serial.printf("Linking with node %d\n", myNode);
     // A node is attempting to link - if successful then get continuity
-    if (gotLink(radio.SENDERID)) {
-      getState(radio.SENDERID);
+    if (gotLink(myNode)) {
+      Serial.println("Getting state");
+      getState(myNode);
     }
   } else if (message.startsWith("STATE")) {
-    gotState(radio.SENDERID, message);
+    Serial.println("Recieved state");
+    gotState(myNode, message);
   } else if (message == "NOMSG") {
     // Nothing to do
-  } else {
+  } else if (message != "") {
     // Got a message so get state again
-    Serial.printf("Received message from node %d: ", radio.SENDERID);
+    Serial.printf("Received message from node %d: ", myNode);
     Serial.println(message);    
-    getState(radio.SENDERID);
+    getState(myNode);
   }
 
   /*
@@ -230,21 +246,21 @@ void loop() {
   }
 
   // See if the status pin is touched
-  touchValue = touchRead(SELECT_PIN);
+  touchValue = touchRead(STATUS_PIN);
   if (touchValue < touchThreshold) {
     Serial.println("Status detected");
     getState(currentNode);
   }
 
   // See if the arm pin is touched
-  touchValue = touchRead(SELECT_PIN);
+  touchValue = touchRead(ARM_PIN);
   if (touchValue < touchThreshold) {
     Serial.println("Arm detected");
     toggleArming(currentNode);
   }
 
   // See if the launch pin is touched
-  touchValue = touchRead(SELECT_PIN);
+  touchValue = touchRead(LAUNCH_PIN);
   if (touchValue < touchThreshold) {
     Serial.println("Launch detected");
     sendLaunch(currentNode);
