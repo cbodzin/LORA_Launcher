@@ -38,6 +38,9 @@
 #define STATUS_PIN    14
 #define ARM_PIN       12
 #define LAUNCH_PIN    13
+int touchThresh[3] = {40};
+int lastTouch = 0;
+#define DEBOUNCE_DELAY  500
 
 // SPI pin definitions (if using non-default pins)
 #define SPI_MOSI      23
@@ -53,7 +56,6 @@
 
 bool spy = true; //set to 'true' to sniff all packets on the same network
 rgbLED myLED(LED_RED, LED_GREEN, LED_BLUE);
-const int touchThreshold = 40;
 bool havePacket = false;
 
 // Array to hold node states; NODEID will be the index
@@ -64,6 +66,34 @@ void IRAM_ATTR rfm69Interrupt() {
   // Keep ISR as short as possible!
   // Just set a flag - do processing in main loop
   havePacket = true;
+}
+
+int lookupIndex(int thePin) {
+  switch (thePin) {
+    case SELECT_PIN: return 0;
+    case STATUS_PIN: return 1;
+    case ARM_PIN: return 2;
+    case LAUNCH_PIN: return 3;
+    default: 
+      Serial.println("Uh-oh, no pin");
+      return -1;
+  }
+}
+
+// Calibrate touch for each pin
+void calibrateTouchSensor(int myPin) {
+
+  int baseline = 0;
+  for (int i = 0; i < 100; i++) {
+    baseline += touchRead(myPin);
+    delay(10);
+  }
+  baseline /= 100;
+  
+  // Set threshold to 80% of baseline
+  int threshold = baseline * 0.5;
+  touchThresh[lookupIndex(myPin)] = threshold;
+  Serial.printf("Calibrated threshold for pin %d: %d\n", myPin, threshold);
 }
 
 void setup() {
@@ -77,7 +107,7 @@ void setup() {
   myLED.startBlink();
 
   pinMode(RST_PIN, OUTPUT);
-  pinMode(IRQ_PIN,INPUT);
+  pinMode(IRQ_PIN, INPUT);
   //attachInterrupt(IRQ_PIN, rfm69Interrupt, RISING);
 
   // We wake up the RFM69 by setting to high and then low.  
@@ -112,6 +142,12 @@ void setup() {
 #ifdef ENABLE_ATC
   Serial.println("RFM69_ATC Enabled (Auto Transmission Control)");
 #endif
+
+  // Calibrate touch pins
+  calibrateTouchSensor(SELECT_PIN);
+  calibrateTouchSensor(STATUS_PIN);
+  calibrateTouchSensor(ARM_PIN);
+  calibrateTouchSensor(LAUNCH_PIN);
 
 }
 
@@ -233,9 +269,13 @@ void loop() {
   myLED.setBlinkSpeed(ledState[nodeState[currentNode]][1]);
   myLED.update();
 
+  // Debounce everybody (yes, lazy to not do this per input but I'll live with it for now)
+  if (millis()-lastTouch < DEBOUNCE_DELAY) return;
+
   // See if the selector pin is touched
   int touchValue = touchRead(SELECT_PIN);
-  if (touchValue < touchThreshold) {
+  if (touchValue < touchThresh[lookupIndex(SELECT_PIN)]) {
+    lastTouch = millis();
     Serial.println("Selection detected");
     currentNode++;
     // Time to loop?
@@ -247,22 +287,25 @@ void loop() {
 
   // See if the status pin is touched
   touchValue = touchRead(STATUS_PIN);
-  if (touchValue < touchThreshold) {
+  if (touchValue < touchThresh[lookupIndex(STATUS_PIN)]) {
     Serial.println("Status detected");
+    lastTouch = millis();
     getState(currentNode);
   }
 
   // See if the arm pin is touched
   touchValue = touchRead(ARM_PIN);
-  if (touchValue < touchThreshold) {
+  if (touchValue < touchThresh[lookupIndex(ARM_PIN)]) {
+    lastTouch = millis();
     Serial.println("Arm detected");
     toggleArming(currentNode);
   }
 
   // See if the launch pin is touched
   touchValue = touchRead(LAUNCH_PIN);
-  if (touchValue < touchThreshold) {
+  if (touchValue < touchThresh[lookupIndex(LAUNCH_PIN)]) {
     Serial.println("Launch detected");
+    lastTouch = millis();
     sendLaunch(currentNode);
   }
 
