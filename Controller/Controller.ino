@@ -24,8 +24,8 @@
 //*********************************************************************************************
 #define SERIAL_BAUD   115200
 #define RST_PIN       5
-#define IRQ_PIN       27
-#define RF69_IRQ_PIN  27
+#define IRQ_PIN       21
+#define RF69_IRQ_PIN  21
 #define RF69_SPI_CS   15
 
 // Status LED PINs
@@ -34,7 +34,7 @@
 #define LED_BLUE      25
 
 // Button pins
-#define SELECT_PIN    32
+#define SELECT_PIN    4
 #define STATUS_PIN    14
 #define ARM_PIN       12
 #define LAUNCH_PIN    13
@@ -59,7 +59,7 @@ rgbLED myLED(LED_RED, LED_GREEN, LED_BLUE);
 bool havePacket = false;
 
 // Array to hold node states; NODEID will be the index
-int nodeState[5];
+int nodeState[6];
 int currentNode = 2;    // Allow this to be selected later
 
 void IRAM_ATTR rfm69Interrupt() {
@@ -146,8 +146,10 @@ void setup() {
   // Calibrate touch pins
   calibrateTouchSensor(SELECT_PIN);
   calibrateTouchSensor(STATUS_PIN);
-  calibrateTouchSensor(ARM_PIN);
-  calibrateTouchSensor(LAUNCH_PIN);
+  // calibrateTouchSensor(ARM_PIN);
+  // calibrateTouchSensor(LAUNCH_PIN);
+  pinMode(ARM_PIN, INPUT_PULLUP);
+  pinMode(LAUNCH_PIN, INPUT_PULLUP);
 
 }
 
@@ -282,6 +284,7 @@ void loop() {
     if (currentNode > MAX_NODE) {
       currentNode = MIN_NODE;
     }
+    Serial.printf("Current node is %d\n", currentNode);
     getState(currentNode);
   }
 
@@ -294,16 +297,18 @@ void loop() {
   }
 
   // See if the arm pin is touched
-  touchValue = touchRead(ARM_PIN);
-  if (touchValue < touchThresh[lookupIndex(ARM_PIN)]) {
+  // touchValue = touchRead(ARM_PIN);
+  // if (touchValue < touchThresh[lookupIndex(ARM_PIN)]) {
+  if (digitalRead(ARM_PIN) == LOW) {
     lastTouch = millis();
     Serial.println("Arm detected");
     toggleArming(currentNode);
   }
 
   // See if the launch pin is touched
-  touchValue = touchRead(LAUNCH_PIN);
-  if (touchValue < touchThresh[lookupIndex(LAUNCH_PIN)]) {
+  // touchValue = touchRead(LAUNCH_PIN);
+  // if (touchValue < touchThresh[lookupIndex(LAUNCH_PIN)]) {
+  if (digitalRead(LAUNCH_PIN) == LOW) {    
     Serial.println("Launch detected");
     lastTouch = millis();
     sendLaunch(currentNode);
