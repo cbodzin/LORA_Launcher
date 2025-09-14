@@ -1,3 +1,6 @@
+#ifndef LAUNCHER_H
+#define LAUNCHER_H
+
 // Definitions for both controllers and remotes
   
   /* 
@@ -34,3 +37,4 @@ int ledState[7][2] = {
   { RGB_WHITE,   BLINK_FAST }     // White (fast blink) for error
 };
 
+#endif

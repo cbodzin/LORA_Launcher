@@ -2,7 +2,7 @@
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
 #include "../RGB_LED.h"
 #include "../Launcher.h"
-
+#include "../Buzzer.h"
 
 //*********************************************************************************************
 //************ IMPORTANT SETTINGS - YOU MUST CHANGE/CONFIGURE TO FIT YOUR HARDWARE ************
@@ -48,6 +48,7 @@
 #define LED_RED     33
 #define LED_GREEN   26
 #define LED_BLUE    25
+#define BUZZER_PIN  32
 
 // SPI pin definitions (if using non-default pins) for ESP32-WROOM-32
 #define SPI_MOSI      23
@@ -75,6 +76,7 @@ int hbFailed = 0;
 
 bool spy = false;
 rgbLED myLED(LED_RED, LED_GREEN, LED_BLUE);
+buzzer myBuzz(BUZZER_PIN);
 
 void setup() {
   // Set up serial output
@@ -145,7 +147,7 @@ void getLink() {
 // We got a link message from a Gateway, so move to STATE_READY if we have continuity
 void gotLink(int gatewayID) {
   Serial.printf("Linked with gateway %d\n", gatewayID);
-
+  myBuzz.chirpOn();
   // Did we relink as a failed heartbeat?
   if (hbFailed == 0) {   // No, not a failed heartbeat   
     // Either go to READY or NOCONT depending on continuity
@@ -198,6 +200,13 @@ bool setArmed(bool newState) {
   } 
   Serial.print("Setting armed to ");
   Serial.println(armed);
+  if (armed) {
+    myBuzz.chirpOff();
+    myBuzz.on(BUZZER_SHORT);
+  } else {
+    myBuzz.off();
+    myBuzz.chirpOn();
+  }
   armed = newState;
   if (continuity && armed) {
     currentState = STATE_ARMED;
@@ -368,9 +377,12 @@ void loop() {
   /*
   Do basic housekeeping:
   * Blink LED
+  * Do buzzer
   */
   myLED.setColor(ledState[currentState][0]);
   myLED.setBlinkSpeed(ledState[currentState][1]);
   myLED.update();
+
+  myBuzz.update();
   
 }
