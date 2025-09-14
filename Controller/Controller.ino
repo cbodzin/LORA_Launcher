@@ -36,8 +36,8 @@
 // Button pins
 #define SELECT_PIN    4
 #define STATUS_PIN    14
-#define ARM_PIN       12
-#define LAUNCH_PIN    13
+#define ARM_PIN       34
+#define LAUNCH_PIN    35
 int touchThresh[3] = {40};
 int lastTouch = 0;
 #define DEBOUNCE_DELAY  500
@@ -148,8 +148,8 @@ void setup() {
   calibrateTouchSensor(STATUS_PIN);
   // calibrateTouchSensor(ARM_PIN);
   // calibrateTouchSensor(LAUNCH_PIN);
-  pinMode(ARM_PIN, INPUT_PULLUP);
-  pinMode(LAUNCH_PIN, INPUT_PULLUP);
+  pinMode(ARM_PIN, INPUT);
+  pinMode(LAUNCH_PIN, INPUT);
 
 }
 
@@ -299,7 +299,7 @@ void loop() {
   // See if the arm pin is touched
   // touchValue = touchRead(ARM_PIN);
   // if (touchValue < touchThresh[lookupIndex(ARM_PIN)]) {
-  if (digitalRead(ARM_PIN) == LOW) {
+  if (digitalRead(ARM_PIN) == HIGH) {
     lastTouch = millis();
     Serial.println("Arm detected");
     toggleArming(currentNode);
@@ -308,7 +308,7 @@ void loop() {
   // See if the launch pin is touched
   // touchValue = touchRead(LAUNCH_PIN);
   // if (touchValue < touchThresh[lookupIndex(LAUNCH_PIN)]) {
-  if (digitalRead(LAUNCH_PIN) == LOW) {    
+  if (digitalRead(LAUNCH_PIN) == HIGH) {    
     Serial.println("Launch detected");
     lastTouch = millis();
     sendLaunch(currentNode);
