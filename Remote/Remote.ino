@@ -49,6 +49,7 @@
 #define LED_GREEN   26
 #define LED_BLUE    25
 #define BUZZER_PIN  32
+#define RELAY_PIN   13
 
 // SPI pin definitions (if using non-default pins) for ESP32-WROOM-32
 #define SPI_MOSI      23
@@ -86,6 +87,7 @@ void setup() {
   Serial.println("Waking up radio...");
 
   // Configure our digital pins
+  pinMode(RELAY_PIN, OUTPUT);
   pinMode(RST_PIN, OUTPUT);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
@@ -141,6 +143,7 @@ void setup() {
 // Try to link with a gateway
 void getLink() {
   Serial.println("Turning on");
+  myBuzz.chirpOff();
   radio.sendWithRetry(GATEWAYID, "LINK", 4);
 }
 
@@ -222,6 +225,11 @@ bool setArmed(bool newState) {
 bool doLaunch() {
   // TODO - open relay and launxh, then delay some amount of time
   currentState = STATE_LAUNCH;
+  // Open the relay
+  digitalWrite(RELAY_PIN, HIGH);
+  delay(500);
+  digitalWrite(RELAY_PIN, LOW);
+  myBuzz.off();
   return(true);
 }
 
@@ -366,6 +374,8 @@ void loop() {
       myLED.setColor(ledState[currentState][0]);
       myLED.setBlinkSpeed(BLINK_NONE);
       myLED.update();
+      myBuzz.off();
+      myBuzz.chirpOn();
       break;
     default:
       // We should never be here.  Something is horribly wrong.
