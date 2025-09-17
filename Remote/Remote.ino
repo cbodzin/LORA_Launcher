@@ -65,8 +65,6 @@ int linkTry = 0;
 int heartBeat = 0;
 int hbFailed = 0;
 
-#define HB_CHECK_TIME 5000 // Check for hearbeat with linked controller every 5 seconds
-#define MAX_HB_FAIL 3 // after 5 failed heartbeats go back to booting state
 #define LINKWAIT  500
 
 #ifdef ENABLE_ATC
@@ -146,6 +144,12 @@ void getLink() {
   myBuzz.chirpOff();
   radio.sendWithRetry(GATEWAYID, "LINK", 4);
 }
+
+void getHB() {
+  Serial.println("Sending hearbeat");
+  radio.sendWithRetry(GATEWAYID, "HB", 2);
+}
+
 
 // We got a link message from a Gateway, so move to STATE_READY if we have continuity
 void gotLink(int gatewayID) {
@@ -303,6 +307,7 @@ void loop() {
     There is a known universe of messages.  Specifically:
 
     "LINK"        The controller is linked with us
+    "HB"          We got a heartbeat
     "STATE"       The controller wants to know our state
     "ARM"         Get ready to launch
     "DISARM"      Hold the launch and go back to STATE_READY
@@ -328,15 +333,18 @@ void loop() {
   //   bool result = setArmed(false);
   } else if (message == "LAUNCH") {
     setLaunch();
-  } else if (message == "") {
+  } else if (message == "HB") {
+    Serial.printf("Heartbeat received from %d\n",myNode);
+    hbFailed = 0;
+  } else if ((message == "") && (currentState != STATE_BOOT)) {
     // We're not yet listening, just make sure we still have heartbeat if we haven't received anything
     if ((millis()-heartBeat) > HB_CHECK_TIME) {
       // First reset the heartbeat timer
       heartBeat = millis();
       if (currentState != STATE_BOOT) hbFailed++;
-      if (hbFailed < MAX_HB_FAIL ) {
-        // Try getting link
-        getLink();
+      if (hbFailed <= MAX_HB_FAIL ) {
+        // Try getting hearbeat
+        getHB();
       } else {
         // We've failed enough that we need to go back to boot
         Serial.println("Too many failed heartbeats, resetting to STATE_BOOT");
@@ -346,7 +354,7 @@ void loop() {
         currentState = STATE_BOOT;
       }
     }
-  } else {
+  } else if (message != "") {
     Serial.print("Received unsupported command: ");
     Serial.println(message);    
   }

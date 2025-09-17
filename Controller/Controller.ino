@@ -38,6 +38,7 @@
 #define TFT_CS    14
 #define TFT_RST   32
 #define TFT_DC    27
+#define MAX_LINES 17
 
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
@@ -53,6 +54,7 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RS
 #define LAUNCH_PIN    35
 int touchThresh[3] = {40};
 int lastTouch = 0;
+int lastComm = 0;
 #define DEBOUNCE_DELAY  500
 
 // SPI pin definitions (if using non-default pins)
@@ -69,17 +71,17 @@ int lastTouch = 0;
 
 bool spy = true; //set to 'true' to sniff all packets on the same network
 rgbLED myLED(LED_RED, LED_GREEN, LED_BLUE);
-bool havePacket = false;
+// bool havePacket = false;
 
 // Array to hold node states; NODEID will be the index
 int nodeState[6];
 int currentNode = 2;    // Allow this to be selected later
 
-void IRAM_ATTR rfm69Interrupt() {
-  // Keep ISR as short as possible!
-  // Just set a flag - do processing in main loop
-  havePacket = true;
-}
+// void IRAM_ATTR rfm69Interrupt() {
+//   // Keep ISR as short as possible!
+//   // Just set a flag - do processing in main loop
+//   havePacket = true;
+// }
 
 int lookupIndex(int thePin) {
   switch (thePin) {
@@ -111,7 +113,16 @@ void calibrateTouchSensor(int myPin) {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
+  while (!Serial) delay(50);
+
+  // Initialize the screen
+  tft.init(135,240);
+  tft.setRotation(1);
+  tft.setTextSize(1);
+  tft.setTextWrap(false);
+  tft.fillScreen(ST77XX_BLACK);
   Serial.println("Waking up radio...");
+  tft.println("Waking up radio...");
 
   // Configure our digital pins
   pinMode(RST_PIN, OUTPUT);
@@ -129,13 +140,16 @@ void setup() {
   digitalWrite(RST_PIN,LOW);
   delay(500);
   Serial.println("Finished waking up.");
+  tft.println("Finished waking up.");
   bool worked = radio.initialize(FREQUENCY,NODEID,NETWORKID);
   delay(500);
   if (worked) {
     Serial.println("Radio initialized.");
+    tft.println("Radio initialized.");
     myLED.setBlinkSpeed(BLINK_MED);
   } else {
     Serial.println("Radio failed to init.");
+    tft.println("Radio failed to init.");
     myLED.setColor(ledState[STATE_DONE][0]);
     myLED.setBlinkSpeed(ledState[STATE_DONE][1]);
   }
@@ -151,9 +165,11 @@ void setup() {
   char buff[50];
   sprintf(buff, "\nListening at %d Mhz...", FREQUENCY==RF69_433MHZ ? 433 : FREQUENCY==RF69_868MHZ ? 868 : 915);
   Serial.println(buff);
+  tft.println(buff);
     
 #ifdef ENABLE_ATC
   Serial.println("RFM69_ATC Enabled (Auto Transmission Control)");
+  tft.println("RFM69_ATC Enabled (Auto Transmission Control)");
 #endif
 
   // Calibrate touch pins
@@ -163,10 +179,7 @@ void setup() {
   // calibrateTouchSensor(LAUNCH_PIN);
   pinMode(ARM_PIN, INPUT);
   pinMode(LAUNCH_PIN, INPUT);
-
-  tft.init(135,240);
-  tft.fillScreen(ST77XX_WHITE);
-
+  
 }
 
 // Received a link request
@@ -175,20 +188,26 @@ bool gotLink(int nodeID) {
   nodeState[nodeID] = STATE_BOOT;
   radio.sendWithRetry(nodeID, "LINK", 4);
   Serial.printf("Linked with node %d\n", nodeID);
+  tft.printf("Linked with node %d\n", nodeID);
   return true;
 }
 
 // Check for state
 void getState(int nodeID) {
-  Serial.println("Sending state");
   radio.sendWithRetry(nodeID, "STATE", 5);
+}
+
+// Send heartbeat
+void sendHB(int nodeID) {
+  radio.sendWithRetry(nodeID, "HB", 2);
 }
 
 void gotState(int nodeID, String state) {
   // First parse out the last character into the status
-  Serial.println("Getting Digit");
   int digit = state[5] - '0';
   nodeState[nodeID] = digit;
+  Serial.printf("Got state %s from remote %d\n", stateName[digit], nodeID);
+  tft.printf("Got state %s from remote %d\n", stateName[digit], nodeID);
 }
 
 // Toggle the arming selector
@@ -196,10 +215,12 @@ void toggleArming(int nodeID) {
   if (nodeState[nodeID] == STATE_ARMED) {
     // Disarm
     Serial.printf("Disarming node %d\n", nodeID);
+    tft.printf("Disarming node %d\n", nodeID);
     radio.sendWithRetry(nodeID, "DISARM", 6);
   } else {
     // Try to arm
     Serial.printf("Arming node %d\n", nodeID);
+    tft.printf("Arming node %d\n", nodeID);
     radio.sendWithRetry(nodeID, "ARM", 3);
   }
 }
@@ -207,6 +228,7 @@ void toggleArming(int nodeID) {
 void sendLaunch(int nodeID) {
   // Launch that puppy!
   radio.sendWithRetry(nodeID, "LAUNCH", 6);
+  tft.printf("Sending launch to remote %d\n", nodeID);
 }
 
 void loop() {
@@ -216,25 +238,15 @@ void loop() {
 
   // Do we have a message to process?
   if (radio.receiveDone()) {
-    Serial.println("Got Data");
     myNode = radio.SENDERID;
     for (byte i = 0; i < radio.DATALEN; i++) {
-      Serial.print((char)radio.DATA[i]);
+      // Serial.print((char)radio.DATA[i]);
       message = message + (char)radio.DATA[i];
     }
-    Serial.println();
-    Serial.println("Done.");
-    Serial.print("Message is: ");
-    Serial.println(message);
 
     if (radio.ACKRequested()) {
       byte theNodeID = radio.SENDERID;
       radio.sendACK();
-      Serial.println(" - ACK sent.");
-
-      // When a node requests an ACK, respond to the ACK
-      // and also send a packet requesting an ACK (every 3rd one only)
-      // This way both TX/RX NODE functions are tested on 1 end at the GATEWAY
     }
   }
 
@@ -242,6 +254,7 @@ void loop() {
     There is a known universe of messages.  Specifically:
 
     "LINK"        The node is linked with us
+    "HB"          The node sent a heartbeat
     "STATEx"      The node's current state (0-6 as defined in Launcher.h)
     "CONT"        Node has continuity
     "NOCONT"      Node has no continuity
@@ -255,6 +268,7 @@ void loop() {
   if (myNode > 0) {
     if ((myNode < MIN_NODE) || (myNode > MAX_NODE )) {
       Serial.printf("Ignoring message from out of bounds node %d\n", myNode);
+      tft.printf("Ignoring message from out of bounds node %d\n", myNode);
       message = "NOMSG";
     }
   }
@@ -262,30 +276,42 @@ void loop() {
   // See what the message is
   if (message.startsWith("LINK")) {
     Serial.printf("Linking with node %d\n", myNode);
+    tft.printf("Linking with node %d\n", myNode);
     // A node is attempting to link - if successful then get continuity
     if (gotLink(myNode)) {
-      Serial.println("Getting state");
       getState(myNode);
     }
+  } else if (message.startsWith("HB")) {
+    Serial.printf("Heartbeat from node %d\n",myNode);
+    sendHB(myNode);
   } else if (message.startsWith("STATE")) {
-    Serial.println("Recieved state");
     gotState(myNode, message);
   } else if (message == "NOMSG") {
     // Nothing to do
   } else if (message != "") {
     // Got a message so get state again
     Serial.printf("Received message from node %d: ", myNode);
+    tft.printf("Received message from node %d: ", myNode);
     Serial.println(message);    
+    tft.println(message);
     getState(myNode);
   }
 
   /*
   Do basic housekeeping:
     * Set LED to the state of the selected remote
+    * Reset the display
   */
   myLED.setColor(ledState[nodeState[currentNode]][0]);
   myLED.setBlinkSpeed(ledState[nodeState[currentNode]][1]);
   myLED.update();
+
+  // Clear the screen if we're past the bottom
+  int myY = tft.getCursorY();
+  if (myY >= 135) {
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setCursor(0,0);
+  }
 
   // Debounce everybody (yes, lazy to not do this per input but I'll live with it for now)
   if (millis()-lastTouch < DEBOUNCE_DELAY) return;
@@ -301,13 +327,15 @@ void loop() {
       currentNode = MIN_NODE;
     }
     Serial.printf("Current node is %d\n", currentNode);
+    tft.printf("Current node is %d\n", currentNode);
     getState(currentNode);
   }
 
   // See if the status pin is touched
   touchValue = touchRead(STATUS_PIN);
   if (touchValue < touchThresh[lookupIndex(STATUS_PIN)]) {
-    Serial.println("Status detected");
+    Serial.printf("Getting status for remote %d\n",currentNode);
+    tft.printf("Getting status for remote %d\n",currentNode);
     lastTouch = millis();
     getState(currentNode);
   }
@@ -317,7 +345,6 @@ void loop() {
   // if (touchValue < touchThresh[lookupIndex(ARM_PIN)]) {
   if (digitalRead(ARM_PIN) == HIGH) {
     lastTouch = millis();
-    Serial.println("Arm detected");
     toggleArming(currentNode);
   }
 
@@ -325,7 +352,6 @@ void loop() {
   // touchValue = touchRead(LAUNCH_PIN);
   // if (touchValue < touchThresh[lookupIndex(LAUNCH_PIN)]) {
   if (digitalRead(LAUNCH_PIN) == HIGH) {    
-    Serial.println("Launch detected");
     lastTouch = millis();
     sendLaunch(currentNode);
   }

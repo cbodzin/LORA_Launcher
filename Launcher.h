@@ -22,9 +22,22 @@
 #define STATE_LAUNCH    4
 #define STATE_DONE      5
 #define STATE_ERROR     6
-
 #define MIN_NODE        2
 #define MAX_NODE        5 
+#define HB_CHECK_TIME 5000 // Check for hearbeat with linked controller every 5 seconds
+#define MAX_HB_FAIL 5 // after 5 failed heartbeats go back to booting state
+
+
+// Each state name
+const char* stateName[] = {
+  "BOOTING",
+  "NO CONTINUITY",
+  "READY",
+  "ARMED",
+  "LAUNCHING",
+  "DONE",
+  "STATE_ERROR"
+};
 
 // Each state's colors
 int ledState[7][2] = {
