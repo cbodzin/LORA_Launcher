@@ -2,6 +2,10 @@
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
 #include "../RGB_LED.h"
 #include "../Launcher.h"
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
+#include <SPI.h>
+
 
 //*********************************************************************************************
 //************ IMPORTANT SETTINGS - YOU MUST CHANGE/CONFIGURE TO FIT YOUR HARDWARE *************
@@ -26,7 +30,16 @@
 #define RST_PIN       5
 #define IRQ_PIN       21
 #define RF69_IRQ_PIN  21
-#define RF69_SPI_CS   15
+#define RF69_SPI_CS   2
+
+// TFT SPI pins
+#define TFT_SCLK   13
+#define TFT_MOSI  12
+#define TFT_CS    14
+#define TFT_RST   32
+#define TFT_DC    27
+
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
 // Status LED PINs
 #define LED_RED       33
@@ -35,7 +48,7 @@
 
 // Button pins
 #define SELECT_PIN    4
-#define STATUS_PIN    14
+#define STATUS_PIN    15
 #define ARM_PIN       34
 #define LAUNCH_PIN    35
 int touchThresh[3] = {40};
@@ -46,7 +59,7 @@ int lastTouch = 0;
 #define SPI_MOSI      23
 #define SPI_MISO      19
 #define SPI_SCK       18
-#define SPI_CS        15
+#define SPI_CS        2
 
 #ifdef ENABLE_ATC
   RFM69_ATC radio(RF69_SPI_CS, RF69_IRQ_PIN, true, null);
@@ -150,6 +163,9 @@ void setup() {
   // calibrateTouchSensor(LAUNCH_PIN);
   pinMode(ARM_PIN, INPUT);
   pinMode(LAUNCH_PIN, INPUT);
+
+  tft.init(135,240);
+  tft.fillScreen(ST77XX_WHITE);
 
 }
 
