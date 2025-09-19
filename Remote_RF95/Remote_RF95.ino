@@ -9,9 +9,6 @@
 #define RFM95_RST   5
 #define RFM95_INT   27
 
-// Frequency
-#define RF95_FREQ 915.0
-
 // Misc
 #define SERIAL_BAUD   115200
 #define LINKWAIT      500
@@ -76,7 +73,7 @@ void setup() {
   }
   
   rf95.setFrequency(RF95_FREQ);
-  rf95.setTxPower(13, false);
+  rf95.setTxPower(RF95_TX_HIGH, false);
 
   char buff[50];
   sprintf(buff, "\nTransmitting at %f Mhz...", RF95_FREQ);

@@ -27,6 +27,10 @@
 #define HB_CHECK_TIME 5000 // Check for hearbeat with linked controller every 5 seconds
 #define MAX_HB_FAIL 5 // after 5 failed heartbeats go back to booting state
 
+// Frequency
+#define RF95_FREQ 		915.0
+#define RF95_TX_HIGH  	23
+#define RF95_TX_NORMAL  13
 
 // Each state name
 const char* stateName[] = {

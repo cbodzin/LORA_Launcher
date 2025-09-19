@@ -10,9 +10,6 @@
 #define RFM95_RST   5
 #define RFM95_INT   21
 
-// Frequency
-#define RF95_FREQ 915.0
-
 // TFT SPI pins
 #define TFT_SCLK  13
 #define TFT_MOSI  12
@@ -92,7 +89,7 @@ void setup() {
   }
 
   rf95.setFrequency(RF95_FREQ);
-  rf95.setTxPower(13, false);
+  rf95.setTxPower(RF95_TX_HIGH, false);
 
   char buff[50];
   sprintf(buff, "\nListening at %f Mhz...", RF95_FREQ);
@@ -245,6 +242,7 @@ void loop() {
   if (digitalRead(ARM_PIN) == LOW) {
     lastTouch = millis();
     toggleArming();
+    getState();
   }
 
   // See if the launch pin is pressed
