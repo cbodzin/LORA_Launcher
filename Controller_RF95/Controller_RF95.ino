@@ -14,7 +14,7 @@
 #define RF95_FREQ 915.0
 
 // TFT SPI pins
-#define TFT_SCLK   13
+#define TFT_SCLK  13
 #define TFT_MOSI  12
 #define TFT_CS    14
 #define TFT_RST   32
@@ -29,15 +29,11 @@
 #define LED_BLUE      25
 
 // Button pins
-#define SELECT_PIN    4
 #define STATUS_PIN    15
-#define ARM_PIN       34
-#define LAUNCH_PIN    35
+#define ARM_PIN       4
+#define LAUNCH_PIN    22
 
-// Touch pins
-int touchThresh = 0;
 int lastTouch = 0;
-int lastComm = 0;
 #define DEBOUNCE_DELAY  500
 
 // SPI pin definitions (if using non-default pins)
@@ -50,22 +46,6 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 rgbLED myLED(LED_RED, LED_GREEN, LED_BLUE);
 int nodeState = STATE_BOOT;
-
-// Calibrate touch for each pin
-void calibrateTouchSensor(int myPin) {
-
-  int baseline = 0;
-  for (int i = 0; i < 100; i++) {
-    baseline += touchRead(myPin);
-    delay(10);
-  }
-  baseline /= 100;
-  
-  // Set threshold to 80% of baseline
-  int threshold = baseline * 0.5;
-  touchThresh = threshold;
-  Serial.printf("Calibrated threshold for pin %d: %d\n", myPin, threshold);
-}
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
@@ -81,8 +61,9 @@ void setup() {
   tft.println("Waking up radio...");
 
   // Configure our digital pins
-  pinMode(ARM_PIN, INPUT);
-  pinMode(LAUNCH_PIN, INPUT);
+  pinMode(ARM_PIN, INPUT_PULLUP);
+  pinMode(LAUNCH_PIN, INPUT_PULLUP);
+  pinMode(STATUS_PIN, INPUT_PULLUP);
   pinMode(RFM95_RST, OUTPUT);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
@@ -114,12 +95,10 @@ void setup() {
   rf95.setTxPower(13, false);
 
   char buff[50];
-  sprintf(buff, "\nListening at %d Mhz...", RF95_FREQ);
+  sprintf(buff, "\nListening at %f Mhz...", RF95_FREQ);
   Serial.println(buff);
   tft.println(buff);
     
-  // Calibrate touch pins
-  calibrateTouchSensor(STATUS_PIN);
 }
 
 // Received a link request
@@ -157,28 +136,30 @@ void gotState(String state) {
 void toggleArming() {
   if (nodeState == STATE_ARMED) {
     // Disarm
-    Serial.println("Disarming node");
-    tft.println("Disarming node");
+    Serial.println("Disarming remote");
+    tft.println("Disarming remote");
     rf95.send((uint8_t*)"DISARM", 6);
     rf95.waitPacketSent();
   } else {
     // Try to arm
-    Serial.println("Arming node");
-    tft.println("Arming node");
+    Serial.println("Arming remote");
+    tft.println("Arming remote");
     rf95.send((uint8_t*)"ARM", 3);
     rf95.waitPacketSent();
   }
 }
 
+// Send a launch command
 void sendLaunch() {
   // Launch that puppy!
   rf95.send((uint8_t*)"LAUNCH", 6);
   rf95.waitPacketSent();
+  Serial.println("Sending launch to remote");
   tft.println("Sending launch to remote");
 }
 
+// Main loop
 void loop() {
-
   String message = "";
 
   // Do we have a message to process?
@@ -209,14 +190,14 @@ void loop() {
 
   // See what the message is
   if (message.startsWith("LINK")) {
-    Serial.println("Linking with node");
-    tft.println("Linking with node");
+    Serial.println("Linking with remote");
+    tft.println("Linking with remote");
     // A node is attempting to link - if successful then get continuity
     if (gotLink()) {
       getState();
     }
   } else if (message.startsWith("HB")) {
-    Serial.println("Heartbeat from node");
+    Serial.println("Heartbeat from remote");
     sendHB();
   } else if (message.startsWith("STATE")) {
     gotState(message);
@@ -229,6 +210,8 @@ void loop() {
     Serial.println(message);    
     tft.println(message);
     getState();
+  } else {
+    // Serial.println("Nothing to do");
   }
 
   /*
@@ -250,9 +233,8 @@ void loop() {
   // Debounce everybody (yes, lazy to not do this per input but I'll live with it for now)
   if (millis()-lastTouch < DEBOUNCE_DELAY) return;
 
-  // See if the status pin is touched
-  int touchValue = touchRead(STATUS_PIN);
-  if (touchValue < touchThresh) {
+  // See if the status pin is pressed
+  if (digitalRead(STATUS_PIN) == LOW) {
     Serial.println("Getting status from remote");
     tft.println("Getting status for remote");
     lastTouch = millis();
@@ -260,13 +242,13 @@ void loop() {
   }
 
   // See if the arm pin is pressed
-  if (digitalRead(ARM_PIN) == HIGH) {
+  if (digitalRead(ARM_PIN) == LOW) {
     lastTouch = millis();
     toggleArming();
   }
 
   // See if the launch pin is pressed
-  if (digitalRead(LAUNCH_PIN) == HIGH) {    
+  if (digitalRead(LAUNCH_PIN) == LOW) {   
     lastTouch = millis();
     sendLaunch();
   }

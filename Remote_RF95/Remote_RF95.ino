@@ -79,7 +79,7 @@ void setup() {
   rf95.setTxPower(13, false);
 
   char buff[50];
-  sprintf(buff, "\nTransmitting at %d Mhz...", RF95_FREQ);
+  sprintf(buff, "\nTransmitting at %f Mhz...", RF95_FREQ);
   Serial.println(buff);
 
 }
