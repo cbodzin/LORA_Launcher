@@ -11,12 +11,13 @@
 #define RFM95_INT   21
 
 // TFT SPI pins
-#define TFT_SCLK  13
-#define TFT_MOSI  12
-#define TFT_CS    14
-#define TFT_RST   32
-#define TFT_DC    27
-#define MAX_LINES 17
+#define TFT_SCLK   13
+#define TFT_MOSI   12
+#define TFT_CS     14
+#define TFT_RST    32
+#define TFT_DC     27
+#define TFT_WIDTH  320
+#define TFT_HEIGHT 170
 
 #define SERIAL_BAUD   115200
 
@@ -49,9 +50,9 @@ void setup() {
   while (!Serial) delay(50);
 
   // Initialize the screen
-  tft.init(135,240);
-  tft.setRotation(1);
-  tft.setTextSize(1);
+  tft.init(TFT_HEIGHT, TFT_WIDTH);
+  tft.setRotation(3);
+  tft.setTextSize(2);
   tft.setTextWrap(false);
   tft.fillScreen(ST77XX_BLACK);
   Serial.println("Waking up radio...");
@@ -159,6 +160,14 @@ void sendLaunch() {
 void loop() {
   String message = "";
 
+  // Clear the screen if we're past the bottom
+  int myY = tft.getCursorY();
+  if (myY >= TFT_HEIGHT) {
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setCursor(0,0);
+  }
+
+
   // Do we have a message to process?
   if (rf95.available()) {
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
@@ -219,13 +228,6 @@ void loop() {
   myLED.setColor(ledState[nodeState][0]);
   myLED.setBlinkSpeed(ledState[nodeState][1]);
   myLED.update();
-
-  // Clear the screen if we're past the bottom
-  int myY = tft.getCursorY();
-  if (myY >= 135) {
-    tft.fillScreen(ST77XX_BLACK);
-    tft.setCursor(0,0);
-  }
 
   // Debounce everybody (yes, lazy to not do this per input but I'll live with it for now)
   if (millis()-lastTouch < DEBOUNCE_DELAY) return;
