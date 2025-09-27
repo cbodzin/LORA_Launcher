@@ -30,9 +30,16 @@
 #define STATUS_PIN    15
 #define ARM_PIN       4
 #define LAUNCH_PIN    22
+#define DISPLAY_PIN   16
 
 int lastTouch = 0;
 #define DEBOUNCE_DELAY  500
+
+// Toggles
+bool armToggle = false;
+bool lightMode = false;
+uint16_t bgColor = ST77XX_BLACK;
+uint16_t txtColor = ST77XX_WHITE;
 
 // SPI pin definitions (if using non-default pins)
 #define SPI_MOSI      23
@@ -51,10 +58,11 @@ void setup() {
 
   // Initialize the screen
   tft.init(TFT_HEIGHT, TFT_WIDTH);
-  tft.setRotation(3);
+  tft.setRotation(1);
   tft.setTextSize(2);
   tft.setTextWrap(false);
-  tft.fillScreen(ST77XX_BLACK);
+  tft.fillScreen(bgColor);
+  tft.setTextColor(txtColor, bgColor);
   Serial.println("Waking up radio...");
   tft.println("Waking up radio...");
 
@@ -62,6 +70,7 @@ void setup() {
   pinMode(ARM_PIN, INPUT_PULLUP);
   pinMode(LAUNCH_PIN, INPUT_PULLUP);
   pinMode(STATUS_PIN, INPUT_PULLUP);
+  pinMode(DISPLAY_PIN, INPUT_PULLUP);
   pinMode(RFM95_RST, OUTPUT);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
@@ -131,8 +140,8 @@ void gotState(String state) {
 }
 
 // Toggle the arming selector
-void toggleArming() {
-  if (nodeState == STATE_ARMED) {
+void toggleArming(bool armState) {
+  if (armState == false) {
     // Disarm
     Serial.println("Disarming remote");
     tft.println("Disarming remote");
@@ -156,6 +165,19 @@ void sendLaunch() {
   tft.println("Sending launch to remote");
 }
 
+// Toggle light/dark mode
+void toggleDisplay(bool newState) {
+  if (lightMode) {
+    bgColor = ST77XX_BLACK;
+    txtColor = ST77XX_WHITE;
+  } else {
+    bgColor = ST77XX_WHITE;
+    txtColor = ST77XX_BLACK;
+  }
+  tft.fillScreen(bgColor);
+  tft.setTextColor(txtColor, bgColor);
+}
+
 // Main loop
 void loop() {
   String message = "";
@@ -163,7 +185,7 @@ void loop() {
   // Clear the screen if we're past the bottom
   int myY = tft.getCursorY();
   if (myY >= TFT_HEIGHT) {
-    tft.fillScreen(ST77XX_BLACK);
+    tft.fillScreen(bgColor);
     tft.setCursor(0,0);
   }
 
@@ -240,10 +262,13 @@ void loop() {
     getState();
   }
 
-  // See if the arm pin is pressed
-  if (digitalRead(ARM_PIN) == LOW) {
+  // See if the arm pin has been moved
+  bool newState = (digitalRead(ARM_PIN) == LOW);
+  // Is it different than it was?
+  if (newState != armToggle) {
     lastTouch = millis();
-    toggleArming();
+    armToggle = newState;
+    toggleArming(armToggle);
     getState();
   }
 
@@ -251,6 +276,14 @@ void loop() {
   if (digitalRead(LAUNCH_PIN) == LOW) {   
     lastTouch = millis();
     sendLaunch();
+  }
+
+  // See if light/dark mode button is pressed
+  if (digitalRead(DISPLAY_PIN) == LOW) {
+    lastTouch = millis();
+    lightMode = !lightMode;
+    toggleDisplay(lightMode);
+    tft.println("Toggling display mode.");
   }
 
 }
