@@ -19,6 +19,8 @@
 #define LED_BLUE    25
 #define BUZZER_PIN  32
 #define RELAY_PIN   13
+#define PROBE_PIN   14
+#define SENSOR_PIN  4
 
 // SPI pin definitions (if using non-default pins) for ESP32-WROOM-32
 #define SPI_MOSI      23
@@ -48,6 +50,8 @@ void setup() {
 
   // Configure our digital pins
   pinMode(RELAY_PIN, OUTPUT);
+  pinMode(PROBE_PIN, OUTPUT);
+  pinMode(SENSOR_PIN, INPUT_PULLDOWN);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
   myLED.startBlink();
@@ -89,6 +93,7 @@ void getLink() {
   rf95.waitPacketSent();
 }
 
+// Send a heartbeat
 void getHB() {
   Serial.println("Sending hearbeat");
   rf95.send((uint8_t*)"HB", 2);
@@ -96,38 +101,50 @@ void getHB() {
 }
 
 // We got a link message from a Gateway, so move to STATE_READY if we have continuity
-void gotLink(int gatewayID) {
-  Serial.printf("Linked with gateway %d\n", gatewayID);
+void gotLink() {
+  Serial.println("Linked with gateway");
   myBuzz.chirpOn();
-  // Did we relink as a failed heartbeat?
-  if (hbFailed == 0) {   // No, not a failed heartbeat   
-    // Either go to READY or NOCONT depending on continuity
-    if (continuity) {
-      Serial.println("Setting ready");
-      currentState = STATE_READY;    
-    } else {
-      currentState = STATE_NOCONT;
-    }
-    myLED.setColor(ledState[currentState][0]);
-    myLED.setBlinkSpeed(ledState[currentState][1]);
-    myLED.update();
+  // Either go to READY or NOCONT depending on continuity
+  continuity = getContinuity();
+  if (continuity) {
+    Serial.println("Setting ready");
+    currentState = STATE_READY;    
   } else {
-    // Reset hbFailed
-    hbFailed = 0;
+    currentState = STATE_NOCONT;
   }
+  myLED.setColor(ledState[currentState][0]);
+  myLED.setBlinkSpeed(ledState[currentState][1]);
+  myLED.update();
+  hbFailed = 0;
   // Remember when we're linked
   heartBeat = millis();
 }
 
 // Check continuity
 bool getContinuity() {
-  // TODO - check for it
-  //bool result = (currentState == STATE_LAUNCH ? false : true);
-  return true;
+  // Turn on the probe pin
+  digitalWrite(PROBE_PIN, HIGH);
+  // Give it 10 millis to turn on
+  delay(10);
+  // Check sensor pin for signal
+  bool contCheck = digitalRead(SENSOR_PIN);
+  Serial.print("Continuity check: ");
+  Serial.println(contCheck ? "Continuity" : "None");
+  // Turn off the probe
+  digitalWrite(PROBE_PIN, LOW);
+  // Adjust state
+  if (contCheck) {
+    if (armed) currentState = STATE_ARMED;
+    if (!armed) currentState = STATE_READY;
+  } else {
+    currentState = STATE_NOCONT;
+  }
+  return contCheck;
 }
 
 // Send our current state
 void sendState() {
+  continuity = getContinuity();
   Serial.print("Sending state: ");
   Serial.println(currentState);
   char buff[6];
@@ -151,6 +168,7 @@ bool setArmed(bool newState) {
     Serial.println("Cannot arm without continuity");
     return false;
   } 
+  armed = newState;  
   Serial.print("Setting armed to ");
   Serial.println(armed);
   if (armed) {
@@ -160,12 +178,11 @@ bool setArmed(bool newState) {
     myBuzz.off();
     myBuzz.chirpOn();
   }
-  armed = newState;
   if (continuity && armed) {
     currentState = STATE_ARMED;
-  } else if (!armed) {
-    currentState = STATE_READY;
-  }
+  } else {
+    currentState = continuity ? STATE_READY : STATE_NOCONT;
+  }  
   myLED.setColor(ledState[currentState][0]);
   myLED.setBlinkSpeed(ledState[currentState][1]);
   myLED.update();
@@ -173,7 +190,6 @@ bool setArmed(bool newState) {
 }
 
 bool doLaunch() {
-  // TODO - open relay and launxh, then delay some amount of time
   currentState = STATE_LAUNCH;
   // Open the relay
   digitalWrite(RELAY_PIN, HIGH);
@@ -196,7 +212,7 @@ bool setLaunch() {
   bool success = doLaunch();
 
   // We should have no conituity now that we fired
-  bool igniterFired = getContinuity();
+  bool igniterFired = !getContinuity();
   
   // Send results to controller
   char buff[50];
@@ -209,7 +225,7 @@ bool setLaunch() {
     currentState = STATE_ARMED;
   } else {
     // Couldn't fire
-    sprintf(buff, "NOLAUCNH Failed relay");
+    sprintf(buff, "NOLAUNCH Failed relay");
     currentState = STATE_ARMED;
   }
   rf95.send((uint8_t*)buff, strlen(buff));
@@ -231,10 +247,9 @@ bool setLaunch() {
 void loop() {
 
   String message = "";
-  int myNode = -1;
 
   // Check for any received packets
-  if (rf95.available()) {
+  if (rf95.available() && currentState != STATE_DONE) {
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
     
@@ -256,33 +271,33 @@ void loop() {
     */
 
     // Check continuity
-    continuity = getContinuity();
+    //continuity = getContinuity();
 
     // See what the message is
     if (message == "LINK") {
+      hbFailed = 0;
       Serial.println("Gotlink");
-      gotLink(myNode);
+      gotLink();
     } else if (message == "STATE") {
       // Send our current State
+      hbFailed = 0;
       sendState();
-    } else if (message == "ARM" || message == "DISARM") {
+    } else if (message == "ARM" ) {
       // Toggle arming
-      armed = !armed;
-      bool result = setArmed(armed);
-    // in the future we may want explicit DISARM command
-    // } else if (message == "DISARM") {
-    //   bool result = setArmed(false);
+      bool result = setArmed(true);
+    } else if (message == "DISARM") {
+      bool result = setArmed(false);
     } else if (message == "LAUNCH") {
       setLaunch();
     } else if (message == "HB") {
-      Serial.printf("Heartbeat received from %d\n",myNode);
+      Serial.println("Heartbeat received from controller");
       hbFailed = 0;
-    } else if ((message == "") && (currentState != STATE_BOOT)) {
+    } else if ((message == "") && (currentState > STATE_NOCONT)) {
       // We're not yet listening, just make sure we still have heartbeat if we haven't received anything
       if ((millis()-heartBeat) > HB_CHECK_TIME) {
         // First reset the heartbeat timer
         heartBeat = millis();
-        if (currentState != STATE_BOOT) hbFailed++;
+        if (currentState > STATE_NOCONT) hbFailed++;
         if (hbFailed <= MAX_HB_FAIL ) {
           // Try getting hearbeat
           getHB();
@@ -313,9 +328,10 @@ void loop() {
       }
       break;
     case STATE_READY:
+    case STATE_NOCONT:
     case STATE_ARMED:
       // Get continuity
-      continuity = getContinuity();
+      // continuity = getContinuity();
       break;
     case STATE_LAUNCH:
       setLaunch();
