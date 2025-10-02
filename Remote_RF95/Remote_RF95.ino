@@ -171,7 +171,7 @@ bool setArmed(bool newState) {
   armed = newState;  
   Serial.print("Setting armed to ");
   Serial.println(armed);
-  if (armed) {
+  if (armed && continuity) {
     myBuzz.chirpOff();
     myBuzz.on(BUZZER_SHORT);
   } else {
@@ -294,6 +294,7 @@ void loop() {
       hbFailed = 0;
     } else if ((message == "") && (currentState > STATE_NOCONT)) {
       // We're not yet listening, just make sure we still have heartbeat if we haven't received anything
+      Serial.println("Checking heartbeat...");
       if ((millis()-heartBeat) > HB_CHECK_TIME) {
         // First reset the heartbeat timer
         heartBeat = millis();
@@ -330,6 +331,24 @@ void loop() {
     case STATE_READY:
     case STATE_NOCONT:
     case STATE_ARMED:
+      if ((millis()-heartBeat) > HB_CHECK_TIME) {
+        Serial.println("Checking heartbeat...");
+        // First reset the heartbeat timer
+        heartBeat = millis();
+        if (currentState > STATE_NOCONT) hbFailed++;
+        if (hbFailed <= MAX_HB_FAIL ) {
+          // Try getting hearbeat
+          Serial.printf("Missed %d heartbeats, trying again.\n", hbFailed);
+          getHB();
+        } else {
+          // We've failed enough that we need to go back to boot
+          Serial.println("Too many failed heartbeats, resetting to STATE_BOOT");
+          hbFailed = 0;
+          linkTry = 0;
+          setArmed(false);
+          currentState = STATE_BOOT;
+        }
+      }
       // Get continuity
       // continuity = getContinuity();
       break;
