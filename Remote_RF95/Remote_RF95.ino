@@ -132,11 +132,8 @@ bool getContinuity() {
   Serial.println(contCheck ? "Continuity" : "None");
   // Turn off the probe
   digitalWrite(PROBE_PIN, LOW);
-  // Adjust state
-  if (contCheck) {
-    if (armed) currentState = STATE_ARMED;
-    if (!armed) currentState = STATE_READY;
-  } else {
+  continuity = contCheck;
+  if ((currentState == STATE_ARMED) && !contCheck) {
     currentState = STATE_NOCONT;
   }
   return contCheck;
@@ -189,14 +186,16 @@ bool setArmed(bool newState) {
   return true;
 }
 
-bool doLaunch() {
-  currentState = STATE_LAUNCH;
+void doLaunch() {
   // Open the relay
   digitalWrite(RELAY_PIN, HIGH);
-  delay(500);
+  // Make it long enough for me to pull the wire
+  delay(1500);
   digitalWrite(RELAY_PIN, LOW);
   myBuzz.off();
-  return(true);
+  // Assume it fired
+  continuity = false;
+  currentState = STATE_DONE;
 }
 
 bool setLaunch() {
@@ -205,29 +204,21 @@ bool setLaunch() {
     Serial.println("Cannot launch unless armed and with continuity.");
     return(false);
   }
-  
-  currentState = STATE_LAUNCH;
-  
+    
   // Launch!
-  bool success = doLaunch();
-
-  // We should have no conituity now that we fired
-  bool igniterFired = !getContinuity();
+  doLaunch();
   
+  // Check continuity
+  if (getContinuity()) {
+    Serial.println("Fuck");
+  } else {
+    currentState = STATE_DONE;
+  }
   // Send results to controller
   char buff[50];
-  if (success && igniterFired) {
-    sprintf(buff, "LAUNCH Success");
-    currentState = STATE_DONE;
-  } else if (success) {
-    // Hmm, we opened the relay but there is still continuity
-    sprintf(buff, "NOLAUNCH Relay fired but still continuity");
-    currentState = STATE_ARMED;
-  } else {
-    // Couldn't fire
-    sprintf(buff, "NOLAUNCH Failed relay");
-    currentState = STATE_ARMED;
-  }
+  sprintf(buff, "LAUNCH Success");
+  currentState = STATE_DONE;
+  Serial.println(buff);
   rf95.send((uint8_t*)buff, strlen(buff));
   rf95.waitPacketSent();  
 }
@@ -288,7 +279,10 @@ void loop() {
     } else if (message == "DISARM") {
       bool result = setArmed(false);
     } else if (message == "LAUNCH") {
-      setLaunch();
+      if (currentState = STATE_ARMED) {
+        currentState = STATE_LAUNCH;        
+      }
+      
     } else if (message == "HB") {
       Serial.println("Heartbeat received from controller");
       hbFailed = 0;
@@ -357,10 +351,13 @@ void loop() {
       break;
     case STATE_DONE:
       myLED.setColor(ledState[currentState][0]);
-      myLED.setBlinkSpeed(BLINK_NONE);
+      myLED.setBlinkSpeed(ledState[currentState][1]);
       myLED.update();
       myBuzz.off();
-      myBuzz.chirpOn();
+      myBuzz.chirpOff();
+      Serial.println("Done!");
+      sendState();
+      delay(2000);
       break;
     default:
       // We should never be here.  Something is horribly wrong.

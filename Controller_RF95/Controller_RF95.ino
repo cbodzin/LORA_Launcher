@@ -30,16 +30,25 @@
 #define STATUS_PIN    15
 #define ARM_PIN       4
 #define LAUNCH_PIN    22
-#define DISPLAY_PIN   16
+#define MISC_PIN      16
 
 int lastTouch = 0;
 #define DEBOUNCE_DELAY  500
+
+// Use misc button for reboots
+#define REBOOTER
+// Use misc button for light mode
+//#define LIGHTMODE
 
 // Toggles
 bool armToggle = false;
 bool lightMode = false;
 uint16_t bgColor = ST77XX_BLACK;
 uint16_t txtColor = ST77XX_WHITE;
+
+// Heartbeat
+int heartBeat = 0;
+int hbFailed = 0;
 
 // SPI pin definitions (if using non-default pins)
 #define SPI_MOSI      23
@@ -70,7 +79,7 @@ void setup() {
   pinMode(ARM_PIN, INPUT_PULLUP);
   pinMode(LAUNCH_PIN, INPUT_PULLUP);
   pinMode(STATUS_PIN, INPUT_PULLUP);
-  pinMode(DISPLAY_PIN, INPUT_PULLUP);
+  pinMode(MISC_PIN, INPUT_PULLUP);
   pinMode(RFM95_RST, OUTPUT);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
@@ -108,6 +117,12 @@ void setup() {
     
 }
 
+// Reboot routine
+void doReboot() {
+  ESP.restart();
+  while(1) {}  
+}
+
 // Received a link request
 bool gotLink() {
   // Set to default state
@@ -129,6 +144,19 @@ void getState() {
 void sendHB() {
   rf95.send((uint8_t*)"HB", 2);
   rf95.waitPacketSent();
+  Serial.println("Sending heartbeat");
+  //tft.println("Sending heartbeat");
+}
+
+// Get heartbeat
+void gotHB() {
+  // Reset heartbeat counters;
+  hbFailed = 0;
+  heartBeat = millis();
+  Serial.println("Received heartbeat");
+  // If we weren't expecting this then get state
+  if (nodeState == STATE_BOOT) getState();
+  //tft.println("Received heartbeat");
 }
 
 void gotState(String state) {
@@ -137,6 +165,9 @@ void gotState(String state) {
   nodeState = digit;
   Serial.printf("Got state %s from remote\n", stateName[digit]);
   tft.printf("Got state %s from remote\n", stateName[digit]);
+  // Getting state is as good as a heartbeart
+  hbFailed = 0;
+  heartBeat = millis();
 }
 
 // Toggle the arming selector
@@ -189,7 +220,6 @@ void loop() {
     tft.setCursor(0,0);
   }
 
-
   // Do we have a message to process?
   if (rf95.available()) {
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
@@ -225,7 +255,7 @@ void loop() {
       getState();
     }
   } else if (message.startsWith("HB")) {
-    Serial.println("Heartbeat from remote");
+    gotHB();
     sendHB();
   } else if (message.startsWith("STATE")) {
     gotState(message);
@@ -238,9 +268,7 @@ void loop() {
     Serial.println(message);    
     tft.println(message);
     getState();
-  } else {
-    // Serial.println("Nothing to do");
-  }
+  } 
 
   /*
   Do basic housekeeping:
@@ -278,12 +306,42 @@ void loop() {
     sendLaunch();
   }
 
-  // See if light/dark mode button is pressed
-  if (digitalRead(DISPLAY_PIN) == LOW) {
+  // See if the MISC  button is pressed
+  if (digitalRead(MISC_PIN) == LOW) {
     lastTouch = millis();
+#ifdef LIGHTMODE
     lightMode = !lightMode;
     toggleDisplay(lightMode);
     tft.println("Toggling display mode.");
+#endif
+#ifdef REBOOTER
+    doReboot();
+#endif
+  }
+
+  // Has it been a while since we've heard from the remote?
+  if ((nodeState != STATE_BOOT) && (nodeState != STATE_DONE)) {
+    if (millis() - heartBeat > HB_CHECK_TIME) {
+      // Increment HB failure
+      heartBeat = millis();
+      hbFailed++;
+      // If we over max attempts then just go back to state boot
+      if (hbFailed > MAX_HB_FAIL) {
+        Serial.println("Lost connection, rebooting");
+        tft.println("Lost connection, rebooting");
+        if (nodeState == STATE_ARMED) {
+          armToggle = false;
+          tft.println("Please flip arming");
+        }
+        nodeState = STATE_BOOT;
+        myLED.on(ledState[STATE_BOOT][0]);
+        myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
+        myLED.startBlink();
+        hbFailed = 0;
+      } else {
+        getState();
+      }
+    }
   }
 
 }
