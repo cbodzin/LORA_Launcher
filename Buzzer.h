@@ -64,6 +64,19 @@ public:
       return buzzSpeed;
     }
     
+    // Just do a set of beeps
+    void doBeep(int numBeeps, int beepDuration) {
+      for (int i = 0; i < numBeeps; i++) {
+      	digitalWrite(buzzPin, HIGH);
+      	delay(beepDuration);
+      	digitalWrite(buzzPin, LOW);
+      	// Skip pause on last iteration
+      	if (i+1 < numBeeps) {
+      	  delay(beepDuration);
+      	}
+      }
+    }
+    
     // This must be called in loop() to handle buzzing about
     void update() {
       if (currentState) {

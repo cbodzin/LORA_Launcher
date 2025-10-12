@@ -21,6 +21,7 @@
 #define RELAY_PIN   13
 #define PROBE_PIN   14
 #define SENSOR_PIN  4
+#define CONT_PIN    22
 
 // SPI pin definitions (if using non-default pins) for ESP32-WROOM-32
 #define SPI_MOSI      23
@@ -52,6 +53,7 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(PROBE_PIN, OUTPUT);
   pinMode(SENSOR_PIN, INPUT_PULLDOWN);
+  pinMode(CONT_PIN, INPUT_PULLUP);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
   myLED.startBlink();
@@ -375,6 +377,18 @@ void loop() {
   myLED.setBlinkSpeed(ledState[currentState][1]);
   myLED.update();
 
+  // Is the continuity pin pressed?
+  if (digitalRead(CONT_PIN) == LOW) {
+    bool contCheck = getContinuity();
+    while (digitalRead(CONT_PIN) == LOW) {
+      if (contCheck) {
+        myBuzz.doBeep(1, 500);
+      } else {
+        myBuzz.doBeep(3, 50);
+      }
+    }
+  }
+  
   myBuzz.update();
   
 }
