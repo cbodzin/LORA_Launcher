@@ -15,8 +15,8 @@
 
 // Status LED PINs
 #define LED_RED     33
-#define LED_GREEN   26
-#define LED_BLUE    25
+#define LED_GREEN   25
+#define LED_BLUE    26
 #define BUZZER_PIN  32
 #define RELAY_PIN   13
 #define PROBE_PIN   14
