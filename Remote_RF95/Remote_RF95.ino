@@ -19,6 +19,7 @@
 #define LED_BLUE    26
 #define BUZZER_PIN  32
 #define RELAY_PIN   13
+#define MOSFET_GATE 17
 #define PROBE_PIN   14
 #define SENSOR_PIN  4
 #define CONT_PIN    22
@@ -51,6 +52,7 @@ void setup() {
 
   // Configure our digital pins
   pinMode(RELAY_PIN, OUTPUT);
+  pinMode(MOSFET_GATE, OUTPUT);
   pinMode(PROBE_PIN, OUTPUT);
   pinMode(SENSOR_PIN, INPUT_PULLDOWN);
   pinMode(CONT_PIN, INPUT_PULLUP);
@@ -84,6 +86,10 @@ void setup() {
   char buff[50];
   sprintf(buff, "\nTransmitting at %f Mhz...", RF95_FREQ);
   Serial.println(buff);
+
+  // Make sure relay and MOSFET are both low
+  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(MOSFET_GATE, LOW);
 
 }
 
@@ -167,21 +173,30 @@ bool setArmed(bool newState) {
     Serial.println("Cannot arm without continuity");
     return false;
   } 
+  // Just skip if not linked
+  if (currentState == STATE_BOOT) {
+    return false;
+  }
   armed = newState;  
   Serial.print("Setting armed to ");
   Serial.println(armed);
   if (armed && continuity) {
+    // Turn on buzzer
     myBuzz.chirpOff();
     myBuzz.on(BUZZER_SHORT);
-  } else {
-    myBuzz.off();
-    myBuzz.chirpOn();
-  }
-  if (continuity && armed) {
+    // Turn on the MOSFET
+    digitalWrite(MOSFET_GATE, HIGH);
     currentState = STATE_ARMED;
   } else {
     currentState = continuity ? STATE_READY : STATE_NOCONT;
-  }  
+    // Close Mosfet to disable relay
+    digitalWrite(MOSFET_GATE, LOW);
+    // Turn off buzzer
+    myBuzz.off();
+    myBuzz.chirpOn();
+  }
+
+  // Set the LED
   myLED.setColor(ledState[currentState][0]);
   myLED.setBlinkSpeed(ledState[currentState][1]);
   myLED.update();
@@ -194,6 +209,10 @@ void doLaunch() {
   // Make it long enough for me to pull the wire
   delay(1500);
   digitalWrite(RELAY_PIN, LOW);
+  // Close Mosfet after short delay
+  delay(250);
+  digitalWrite(MOSFET_GATE, LOW);
+  // Turn off buzzer
   myBuzz.off();
   // Assume it fired
   continuity = false;
