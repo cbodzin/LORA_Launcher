@@ -53,8 +53,8 @@ void setup() {
   // Configure our digital pins
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(MOSFET_GATE, OUTPUT);
-  pinMode(PROBE_PIN, OUTPUT);
-  pinMode(SENSOR_PIN, INPUT_PULLDOWN);
+  pinMode(PROBE_PIN, INPUT_PULLUP);
+  pinMode(SENSOR_PIN, OUTPUT);
   pinMode(CONT_PIN, INPUT_PULLUP);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
@@ -90,6 +90,9 @@ void setup() {
   // Make sure relay and MOSFET are both low
   digitalWrite(RELAY_PIN, LOW);
   digitalWrite(MOSFET_GATE, LOW);
+
+  // Set continuity SENSOR_PIN to low
+  digitalWrite(SENSOR_PIN, LOW);
 
 }
 
@@ -130,16 +133,16 @@ void gotLink() {
 
 // Check continuity
 bool getContinuity() {
-  // Turn on the probe pin
-  digitalWrite(PROBE_PIN, HIGH);
-  // Give it 10 millis to turn on
-  delay(10);
+  // // Turn on the probe pin
+  // digitalWrite(PROBE_PIN, HIGH);
+  // // Give it 10 millis to turn on
+  // delay(10);
   // Check sensor pin for signal
-  bool contCheck = digitalRead(SENSOR_PIN);
+  bool contCheck = !digitalRead(PROBE_PIN);
   Serial.print("Continuity check: ");
   Serial.println(contCheck ? "Continuity" : "None");
-  // Turn off the probe
-  digitalWrite(PROBE_PIN, LOW);
+  // // Turn off the probe
+  // digitalWrite(PROBE_PIN, LOW);
   continuity = contCheck;
   if ((currentState == STATE_ARMED) && !contCheck) {
     currentState = STATE_NOCONT;
