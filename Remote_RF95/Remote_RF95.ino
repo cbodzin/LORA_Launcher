@@ -21,7 +21,6 @@
 #define RELAY_PIN   13
 #define MOSFET_GATE 17
 #define PROBE_PIN   14
-#define SENSOR_PIN  4
 #define CONT_PIN    22
 
 // SPI pin definitions (if using non-default pins) for ESP32-WROOM-32
@@ -54,7 +53,6 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(MOSFET_GATE, OUTPUT);
   pinMode(PROBE_PIN, INPUT_PULLUP);
-  pinMode(SENSOR_PIN, OUTPUT);
   pinMode(CONT_PIN, INPUT_PULLUP);
   myLED.on(ledState[STATE_BOOT][0]);
   myLED.setBlinkSpeed(ledState[STATE_BOOT][1]);
@@ -90,9 +88,6 @@ void setup() {
   // Make sure relay and MOSFET are both low
   digitalWrite(RELAY_PIN, LOW);
   digitalWrite(MOSFET_GATE, LOW);
-
-  // Set continuity SENSOR_PIN to low
-  digitalWrite(SENSOR_PIN, LOW);
 
 }
 
@@ -133,16 +128,10 @@ void gotLink() {
 
 // Check continuity
 bool getContinuity() {
-  // // Turn on the probe pin
-  // digitalWrite(PROBE_PIN, HIGH);
-  // // Give it 10 millis to turn on
-  // delay(10);
   // Check sensor pin for signal
   bool contCheck = !digitalRead(PROBE_PIN);
   Serial.print("Continuity check: ");
   Serial.println(contCheck ? "Continuity" : "None");
-  // // Turn off the probe
-  // digitalWrite(PROBE_PIN, LOW);
   continuity = contCheck;
   if ((currentState == STATE_ARMED) && !contCheck) {
     currentState = STATE_NOCONT;
@@ -285,9 +274,6 @@ void loop() {
       "LAUNCH"      Launch the rocket!
     */
 
-    // Check continuity
-    //continuity = getContinuity();
-
     // See what the message is
     if (message == "LINK") {
       hbFailed = 0;
@@ -336,7 +322,6 @@ void loop() {
   }
   
   // We're a state machine.  Big SWITCH statement for our state.
-
   switch (currentState) {
     case STATE_BOOT:
       // Everything starts here.  Try to link with the controller.
@@ -367,8 +352,6 @@ void loop() {
           currentState = STATE_BOOT;
         }
       }
-      // Get continuity
-      // continuity = getContinuity();
       break;
     case STATE_LAUNCH:
       setLaunch();
@@ -410,7 +393,6 @@ void loop() {
       }
     }
   }
-  
   myBuzz.update();
   
 }
