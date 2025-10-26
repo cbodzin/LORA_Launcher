@@ -127,7 +127,7 @@ void doReboot() {
 bool gotLink() {
   // Set to default state
   nodeState = STATE_BOOT;
-  rf95.send((uint8_t*)"LINK", 4);
+  rf95.send((uint8_t*)"L", 1);
   rf95.waitPacketSent();
   Serial.println("Linked with remote");
   tft.println("Linked with remote");
@@ -142,7 +142,7 @@ void getState() {
 
 // Send heartbeat
 void sendHB() {
-  rf95.send((uint8_t*)"HB", 2);
+  rf95.send((uint8_t*)"H", 1);
   rf95.waitPacketSent();
   Serial.println("Sending heartbeat");
   //tft.println("Sending heartbeat");
@@ -161,7 +161,7 @@ void gotHB() {
 
 void gotState(String state) {
   // First parse out the last character into the status
-  int digit = state[5] - '0';
+  int digit = state[1] - '0';
   nodeState = digit;
   Serial.printf("Got state %s from remote\n", stateName[digit]);
   tft.printf("Got state %s from remote\n", stateName[digit]);
@@ -176,13 +176,13 @@ void toggleArming(bool armState) {
     // Disarm
     Serial.println("Disarming remote");
     tft.println("Disarming remote");
-    rf95.send((uint8_t*)"DISARM", 6);
+    rf95.send((uint8_t*)"D", 1);
     rf95.waitPacketSent();
   } else {
     // Try to arm
     Serial.println("Arming remote");
     tft.println("Arming remote");
-    rf95.send((uint8_t*)"ARM", 3);
+    rf95.send((uint8_t*)"A", 1);
     rf95.waitPacketSent();
   }
 }
@@ -190,7 +190,7 @@ void toggleArming(bool armState) {
 // Send a launch command
 void sendLaunch() {
   // Launch that puppy!
-  rf95.send((uint8_t*)"LAUNCH", 6);
+  rf95.send((uint8_t*)"X", 1);
   rf95.waitPacketSent();
   Serial.println("Sending launch to remote");
   tft.println("Sending launch to remote");
@@ -247,20 +247,18 @@ void loop() {
   */
 
   // See what the message is
-  if (message.startsWith("LINK")) {
+  if (message.startsWith("L")) {
     Serial.println("Linking with remote");
     tft.println("Linking with remote");
     // A node is attempting to link - if successful then get continuity
     if (gotLink()) {
       getState();
     }
-  } else if (message.startsWith("HB")) {
+  } else if (message.startsWith("H")) {
     gotHB();
     sendHB();
-  } else if (message.startsWith("STATE")) {
+  } else if (message.startsWith("S")) {
     gotState(message);
-  } else if (message == "NOMSG") {
-    // Nothing to do
   } else if (message != "") {
     // Got a message so get state again
     Serial.print("Received message from remote: ");

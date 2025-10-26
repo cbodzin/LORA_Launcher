@@ -95,14 +95,14 @@ void setup() {
 void getLink() {
   Serial.println("Turning on");
   myBuzz.chirpOff();
-  rf95.send((uint8_t*)"LINK", 4);
+  rf95.send((uint8_t*)"L", 1);
   rf95.waitPacketSent();
 }
 
 // Send a heartbeat
 void getHB() {
   Serial.println("Sending hearbeat");
-  rf95.send((uint8_t*)"HB", 2);
+  rf95.send((uint8_t*)"H", 1);
   rf95.waitPacketSent();
 }
 
@@ -145,7 +145,7 @@ void sendState() {
   Serial.print("Sending state: ");
   Serial.println(currentState);
   char buff[6];
-  sprintf(buff, "STATE%d", currentState);
+  sprintf(buff, "S%d", currentState);
   rf95.send((uint8_t*)buff, 6);
   rf95.waitPacketSent();
 }
@@ -275,25 +275,25 @@ void loop() {
     */
 
     // See what the message is
-    if (message == "LINK") {
+    if (message == "L") {
       hbFailed = 0;
       Serial.println("Gotlink");
       gotLink();
-    } else if (message == "STATE") {
+    } else if (message == "S") {
       // Send our current State
       hbFailed = 0;
       sendState();
-    } else if (message == "ARM" ) {
+    } else if (message == "A" ) {
       // Toggle arming
       bool result = setArmed(true);
-    } else if (message == "DISARM") {
+    } else if (message == "D") {
       bool result = setArmed(false);
-    } else if (message == "LAUNCH") {
+    } else if (message == "X") {
       if (currentState = STATE_ARMED) {
         currentState = STATE_LAUNCH;        
       }
       
-    } else if (message == "HB") {
+    } else if (message == "H") {
       Serial.println("Heartbeat received from controller");
       hbFailed = 0;
     } else if ((message == "") && (currentState > STATE_NOCONT)) {
