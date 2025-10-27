@@ -144,9 +144,9 @@ void sendState() {
   continuity = getContinuity();
   Serial.print("Sending state: ");
   Serial.println(currentState);
-  char buff[6];
+  char buff[2];
   sprintf(buff, "S%d", currentState);
-  rf95.send((uint8_t*)buff, 6);
+  rf95.send((uint8_t*)buff, 2);
   rf95.waitPacketSent();
 }
 
@@ -154,9 +154,11 @@ void sendState() {
 void sendArmed() {
   Serial.print("Sending armed: ");
   Serial.println(armed);
-  char buff[6];
-  sprintf(buff, armed ? "ARMED " : "NO_ARM");
-  rf95.send((uint8_t*)buff, 6);
+  if (armed) {
+    rf95.send((uint8_t*)"A", 1);
+  } else {
+    rf95.send((uint8_t*)"N", 1);
+  }
   rf95.waitPacketSent();  
 }
 
@@ -221,18 +223,9 @@ bool setLaunch() {
   // Launch!
   doLaunch();
   
-  // Check continuity
-  if (getContinuity()) {
-    Serial.println("Fuck");
-  } else {
-    currentState = STATE_DONE;
-  }
   // Send results to controller
-  char buff[50];
-  sprintf(buff, "LAUNCH Success");
   currentState = STATE_DONE;
-  Serial.println(buff);
-  rf95.send((uint8_t*)buff, strlen(buff));
+  rf95.send((uint8_t*)"Z", 1);
   rf95.waitPacketSent();  
 }
 

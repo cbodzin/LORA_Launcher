@@ -136,7 +136,7 @@ bool gotLink() {
 
 // Check for state
 void getState() {
-  rf95.send((uint8_t*)"STATE", 5);
+  rf95.send((uint8_t*)"S", 1);
   rf95.waitPacketSent();
 }
 
@@ -235,15 +235,12 @@ void loop() {
   /*
     There is a known universe of messages.  Specifically:
 
-    "LINK"        The node is linked with us
-    "HB"          The node sent a heartbeat
-    "STATEx"      The node's current state (0-6 as defined in Launcher.h)
-    "CONT"        Node has continuity
-    "NOCONT"      Node has no continuity
-    "ARMED"       Node is armed
-    "NO_ARM"      Node is disarmed
-    "LAUNCH"      Launched the rocket!
-    "NOLAUNCH"    Attempted to launch but something (fatal) went wrong
+    "LINK"        The node is linked with us "L"
+    "HB"          The node sent a heartbeat "H"
+    "STATEx"      The node's current state (0-6 as defined in Launcher.h) "Sx"
+    "ARMED"       Node is armed "A"
+    "NO_ARM"      Node is disarmed "N"
+    "LAUNCH"      Launched the rocket! "Z"
   */
 
   // See what the message is
@@ -259,6 +256,15 @@ void loop() {
     sendHB();
   } else if (message.startsWith("S")) {
     gotState(message);
+  } else if (message.startsWith("Z")) {
+    // Done with launch
+    gotState("S5");
+  } else if (message.startsWith("A")) {
+    // Armed
+    gotState("S3");
+  } else if (message.startsWith("N")) {
+    // Disarmed
+    gotState("S2");
   } else if (message != "") {
     // Got a message so get state again
     Serial.print("Received message from remote: ");
